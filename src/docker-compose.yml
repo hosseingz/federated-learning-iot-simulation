@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  mqtt-broker:
+    container_name: mqtt-broker
+    image: eclipse-mosquitto:latest
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  edge-device-1:
+    container_name: edge-device-1
+    build: ./edge-device
+    depends_on:
+      - mqtt-broker
+    environment:
+      - CLIENT_ID=1
+      - KERAS_HOME=/shared/keras
+    volumes:
+      - shared_data:/shared
+
+  edge-device-2:
+    container_name: edge-device-2
+    build: ./edge-device
+    depends_on:
+      - mqtt-broker
+    environment:
+      - CLIENT_ID=2
+      - KERAS_HOME=/shared/keras
+    volumes:
+      - shared_data:/shared
+
+  federated-server:
+    container_name: federated-server
+    build: ./server
+    depends_on:
+      - mqtt-broker
+    environment:
+      - KERAS_HOME=/shared/keras
+    volumes:
+      - shared_data:/shared
+
+  streamlit-dashboard:
+    container_name: streamlit-dashboard
+    build: ./streamlit
+    ports:
+      - "8501:8501"
+    depends_on:
+      - federated-server
+    environment:
+      - KERAS_HOME=/shared/keras
+    volumes:
+      - shared_data:/shared
+
+volumes:
+  shared_data:
