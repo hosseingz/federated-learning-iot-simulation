@@ -1,3 +1,5 @@
 streamlit==1.50.0
+paho-mqtt==2.1.0
 pandas==2.3.3
 plotly==6.3.1
+psutil==7.1.3

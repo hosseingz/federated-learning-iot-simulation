@@ -8,6 +8,7 @@ services:
       - "1883:1883"
     volumes:
       - ./mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./shared:/shared
 
   edge-device-1:
     container_name: edge-device-1
@@ -18,7 +19,7 @@ services:
       - CLIENT_ID=1
       - KERAS_HOME=/shared/keras
     volumes:
-      - shared_data:/shared
+      - ./shared:/shared
 
   edge-device-2:
     container_name: edge-device-2
@@ -29,7 +30,7 @@ services:
       - CLIENT_ID=2
       - KERAS_HOME=/shared/keras
     volumes:
-      - shared_data:/shared
+      - ./shared:/shared
 
   federated-server:
     container_name: federated-server
@@ -37,21 +38,19 @@ services:
     depends_on:
       - mqtt-broker
     environment:
+      - NUM_CLIENT=2
       - KERAS_HOME=/shared/keras
     volumes:
-      - shared_data:/shared
+      - ./shared:/shared
 
   streamlit-dashboard:
-    container_name: streamlit-dashboard
+    container_name: dashboard
     build: ./streamlit
     ports:
       - "8501:8501"
     depends_on:
-      - federated-server
+      - mqtt-broker
     environment:
       - KERAS_HOME=/shared/keras
     volumes:
-      - shared_data:/shared
-
-volumes:
-  shared_data:
+      - ./shared:/shared
