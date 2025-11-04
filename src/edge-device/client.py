@@ -1,7 +1,6 @@
 import paho.mqtt.client as mqtt
 from tensorflow import keras
 import numpy as np
-import threading
 import logging
 import json
 import time
@@ -29,10 +28,9 @@ data_path = "/shared/keras/datasets/mnist.npz"
 # Training state
 is_training = False
 is_training_permitted = False # dataset loaded, ready to train on weights
-dataset_lock = threading.Lock() # Lock for dataset access if needed, though loading is synchronous here
 x_train = y_train = None # Global variables for dataset
 dataset_size = 1000
-model_weights_lock = threading.Lock() # Lock for model weights during updates/fitting
+
 
 model = keras.Sequential([
     keras.layers.Flatten(input_shape=(28, 28)),
@@ -40,6 +38,7 @@ model = keras.Sequential([
     keras.layers.Dense(10, activation='softmax')
 ])
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
 
 def load_and_update_dataset():
     """Load and slice the dataset based on CLIENT_ID and dataset_size."""
@@ -85,29 +84,23 @@ def load_and_update_dataset():
 
 
 def train_and_send_weights(weights):
-    """Function to run training in a separate thread."""
+    """Function to run training."""
     global model
     try:
-        logger.info(f"Training on local data in thread {threading.current_thread().name}...")
+        logger.info(f"Training on local data...")
         
-        # Acquire lock before setting weights and fitting to prevent race conditions
-        with model_weights_lock:
-            model.set_weights(weights)
-            history = model.fit(x_train, y_train, epochs=1, verbose=0)
+        model.set_weights(weights)
+        history = model.fit(x_train, y_train, epochs=1, verbose=0)
         
         logger.info(f"Training completed.")
         
-        # Acquire lock again before getting weights to send
-        with model_weights_lock:
-            local_weights = [w.tolist() for w in model.get_weights()]
-        
-        # Publish outside the lock to avoid holding it during network I/O
+        local_weights = [w.tolist() for w in model.get_weights()]
         client.publish(TOPIC_TRAIN, json.dumps(local_weights))
         log_event(f"Sent updated weights to server", accuracy=history.history.get('accuracy', [None])[-1])
         logger.info("Sent updated weights back to server.")
         
     except Exception as e:
-        logger.error(f"Error during training in thread: {e}")
+        logger.error(f"Error during training: {e}")
         log_event(f"Training failed - {e}")
 
 
@@ -134,7 +127,7 @@ def on_connect(client, userdata, flags, reason_code, properties):
 
 
 def on_message(client, userdata, msg):
-    global is_training, dataset_size, is_training_permitted
+    global is_training, dataset_size, is_training_permitted, model
     
     if msg.topic == TOPIC_WEIGHTS:
         # Only proceed if training is enabled AND the dataset is loaded AND we are not currently training
@@ -144,9 +137,7 @@ def on_message(client, userdata, msg):
                 weights_data = json.loads(msg.payload.decode())
                 weights = [np.array(w) for w in weights_data]
                 
-                # Start training in a new thread to avoid blocking the MQTT loop
-                train_thread = threading.Thread(target=train_and_send_weights, args=(weights,), daemon=True)
-                train_thread.start()
+                train_and_send_weights(weights)
                 
             except json.JSONDecodeError as je:
                 logger.error(f"JSON decode error processing weights: {je}")
@@ -157,7 +148,6 @@ def on_message(client, userdata, msg):
                  logger.debug("Received weights but training is not started.")
             elif not is_training_permitted:
                  logger.debug("Received weights but dataset not loaded yet.")
-            # Optionally log if both conditions are met but something else prevents it
 
 
     elif msg.topic == TOPIC_CONTROL:

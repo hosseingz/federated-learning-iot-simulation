@@ -129,7 +129,7 @@ def on_message(client, userdata, msg):
         
         
             score = model.evaluate(x_test, y_test, verbose=0)
-            loss, accuracy= f'{float(score[0]):.4f}', f'{float(score[1]):.4f}'
+            loss, accuracy= round(score[0], 4), round(score[1], 4)
             
             logger.info(f"Round {round_num} completed. Accuracy: {accuracy}")
             log_event(f"Round {round_num}: Model evaluated. Accuracy: {accuracy}, Loss: {loss}",
